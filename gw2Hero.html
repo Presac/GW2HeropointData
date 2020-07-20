@@ -1,0 +1,255 @@
+<html>
+
+<head>
+  <style>
+  table {
+    border-collapse: collapse;
+  }
+
+  th,
+  td {
+    text-align: left;
+    padding: 8px;
+  }
+
+  tr:nth-child(even) {
+    background-color: #f2f2f2
+  }
+  </style>
+  <title></title>
+</head>
+
+<body>
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+  <script type="text/javascript">
+  var apiToken; // = "FF45485F-378D-D149-955D-16D708A722710D83A19D-6B44-4B55-9CB0-011910E4DA69";
+
+  var levelPoints = [
+    [11, 5],
+    [13, 10],
+    [15, 15],
+    [17, 20],
+    [19, 26],
+    [21, 32],
+    [23, 38],
+    [25, 44],
+    [27, 52],
+    [29, 60],
+    [31, 68],
+    [33, 76],
+    [35, 86],
+    [37, 96],
+    [39, 106],
+    [41, 116],
+    [43, 126],
+    [45, 138],
+    [47, 150],
+    [49, 162],
+    [51, 174],
+    [53, 186],
+    [55, 200],
+    [57, 214],
+    [59, 228],
+    [61, 242],
+    [63, 256],
+    [65, 272],
+    [67, 288],
+    [69, 304],
+    [71, 320],
+    [73, 336],
+    [75, 354],
+    [77, 372],
+    [79, 398],
+  ];
+
+  var charLoaded;
+
+  // Class for holding character data
+  // Takes name of character, level, and training 
+  class Character {
+    constructor(name, level, training) {
+      this.name = name; // name of character
+      this.level = level; // level of character
+      this.training = training; // an array of all traits and skills unlocked by
+      this.heroChallenges = 0; // variable to hold the number of herochallenges completed
+      this.heropoints = 0; // variable to hold the amaount of heropoints the character has acquired
+      this.heropointsLeft = 0; // the amount of heropoints left after using them on training
+      this.pointsFromChallenge = 0; // heropoints recieved from herochallenges
+
+      // Heropoints calculated from the level of the character
+      var points = 0;
+      for (var i = 0; i < levelPoints.length; i++) {
+        if (level >= levelPoints[i][0]) {
+          points = levelPoints[i][1];
+        } else {
+          break;
+        }
+      }
+      this.pointsFromLevel = points;
+      this.heropoints += points;
+
+      // Calculate amount of points used on traits and skills
+      var pointsUsed = 0;
+      $.each(training, function(key, val) {
+        pointsUsed += val.spent;
+      });
+      this.pointsUsed = pointsUsed;
+    }
+
+    // function to calculate how many herochallenges the character has completed.
+    // and the corresponding heropoints they amount
+    // 1p for Core Tyria and 10p for Heart of Maguuma
+    setHeropoints(heropoints) {
+      this.physicalHP = heropoints;
+      this.heroChallenges = heropoints.length;
+
+      var temp = 0;
+      $.each(heropoints, function(key, val) {
+        if (val.charAt(0) == "0") {
+          temp++;
+        } else {
+          temp += 10;
+        }
+      });
+      this.pointsFromChallenge = temp;
+
+      // Add heropoints from challenges to the total Heropoints
+      this.heropoints += temp;
+
+      // Calculate how many heropoints are left after what have been used
+      this.heropointsLeft = this.heropoints - this.pointsUsed;
+    };
+  }
+
+  // Function to get heropoint data about a character from the api
+  // Returns the function itself to be used somewhere else
+  function fetchCharacterHeropoints(character) {
+    return $.getJSON("https://api.guildwars2.com/v2/characters/" + character + "/heropoints", { "access_token": apiToken }, function(dataHero) {
+      ++charLoaded;
+      $("#loading").html("Finished loading character nr " + charLoaded);
+    }).fail(function(data) {
+
+      // In case of error, write the message out
+      //alert("Error: " + data.responseJSON.text);
+      $("#loading").html("Error: " + data.responseJSON.text);
+      console.log("Error: " + data.responseJSON.text);
+    });
+  }
+
+
+  $(document).ready(function() {
+
+    $("#btn").click(function() {
+      apiToken = $.trim($("#apiKey").val());
+      getAllCharacterData();
+
+    });
+  });
+
+  function getAllCharacterData() {
+
+    var results = [];
+    var allCharacters = [];
+
+    // Show the user loading is starting
+    $("#loading").html("Loading characters");
+    charLoaded = 0;
+
+    // Get data about all characters on the account
+    $.getJSON("https://api.guildwars2.com/v2/characters", { page: "0", "access_token": apiToken },
+      function(data) {}).done(function(data) {
+
+      // Go through all characters returned from the api
+      $.each(data, function(key, charVal) {
+        // Add each character to an array
+        allCharacters.push(
+          new Character(charVal.name, charVal.level, charVal.training));
+
+        // Fetch heropoint data about each character
+        // Push each fetch into an array
+        results.push(fetchCharacterHeropoints(charVal.name));
+      });
+
+      // Wait for heropoint each to finish
+      $.when.apply(this, results).done(function() {
+
+        // Show the user everything is loaded
+        $("#loading").html("Finished loading all character data");
+
+        // Iterate through each call and set the corresponding characters
+        // heropoints in the data for later use
+        for (var i = 0; i < arguments.length; i++) {
+          values = arguments[i][0];
+
+          // Store and calculate each set of heropoints
+          allCharacters[i].setHeropoints(values);
+        }
+
+        // Make the head of the table to show data
+        var page = "<table>" +
+          "<tr>" +
+          "<th>Name</th>" +
+          "<th>Level</th>" +
+          "<th>Hero Challenges (HC)</th>" +
+          "<th>Points from HC</th>" +
+          "<th>Points from Level-reward</th>" +
+          "<th>Points in total</th>" +
+          "<th>Points used</th>" +
+          "<th>Points left</th>" +
+          "</tr>";
+
+        // Iterate through all character and push it into the table;
+        for (var i = 0; i < allCharacters.length; i++) {
+          var temp = allCharacters[i];
+          page += "<tr>" +
+            "<td>" + temp.name + "</td>" +
+            "<td>" + temp.level + "</td>" +
+            "<td>" + temp.heroChallenges + "</td>" +
+            "<td>" + temp.pointsFromChallenge + "</td>" +
+            "<td>" + temp.pointsFromLevel + "</td>" +
+            "<td>" + temp.heropoints + "</td>" +
+            "<td>" + temp.pointsUsed + "</td>" +
+            "<td>" + temp.heropointsLeft + "</td>" + "</tr>";
+        }
+        page += "</table>"
+
+        $("#forTable").html(page);
+
+        console.log(allCharacters);
+      });
+    }).fail(function(data) {
+
+      // In case of error, write the message out
+      //alert("Error: " + data.responseJSON.text);
+      $("#loading").html("Error: " + data.responseJSON.text);
+      console.log("Error: " + data.responseJSON.text);
+    });
+  }
+  /*
+
+Name                Hero Challenges     Points from Hero Challenges     Actual Left
+Alduin Shaemoor     94                  355                             93
+Uura Greenleaf      38                  236                             1
+Ilacis Lightheart   124                 322                             45
+Yfri Lokisdöttir    133                 133                             255
+Fiori Dawnseeker    36                  279                             24
+Taria Helmsplitter  131                 302                             23
+Triffl              169                 331                             42
+Presac              243                 531                             254
+Flera Nightstalker  0                   0                               138
+Harald Mimirson     35                  278                             12
+     */
+
+  //https://api.guildwars2.com/v2/characters/Uura%20Greenleaf/heropoints?access_token=FF45485F-378D-D149-955D-16D708A722710D83A19D-6B44-4B55-9CB0-011910E4DA69
+  //https://api.guildwars2.com/v2/continents/1/floors/0
+  //https://api.guildwars2.com/v2/characters?access_token=FF45485F-378D-D149-955D-16D708A722710D83A19D-6B44-4B55-9CB0-011910E4DA69
+  //https://api.guildwars2.com/v2/continents/1/floors/0/regions?ids=all
+  </script>
+  <div>Key needs Character, Progression and Builds to get all data</div>
+  <input type="text" id="apiKey" />
+  <button id="btn">Register Key</button>
+  <div id="loading"></div>
+  <div id="forTable"></div>
+</body>
+
+</html>
